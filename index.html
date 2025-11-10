@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CalCute — 일주일 식단 계획</title>
+<style>
+  :root{
+    --bg:#f3fff9; --card:#ffffff; --mint:#9ee6cf; --mint-2:#7fdac1; --accent:#2f675e; --muted:#6b8b7a; --shadow:rgba(43,74,63,0.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Nunito',system-ui,-apple-system; background:var(--bg); color:var(--accent); padding:20px;}
+  .wrap{max-width:1000px;margin:auto;background:linear-gradient(180deg,#ffffff,#f7fffb);border-radius:18px;padding:18px;box-shadow:0 12px 30px var(--shadow);position:relative;}
+  header{display:flex;align-items:center;gap:14px;}
+  .logo{background:linear-gradient(135deg,var(--mint),var(--mint-2));padding:12px 18px;border-radius:14px;color:#053827;font-weight:800;font-size:20px;box-shadow:0 6px 18px rgba(47,103,94,0.12);}
+  h1{margin:0;font-size:20px;}
+  p.lead{margin:2px 0 0;color:var(--muted);}
+  .day-plan{margin-top:18px;background:#fff;padding:14px;border-radius:12px;box-shadow:0 8px 20px rgba(15,30,25,0.04);}
+  .meal-row{display:flex;align-items:center;gap:8px;margin-top:6px;}
+  input[type=text], input[type=number], select{padding:6px;border-radius:8px;border:1px solid #e6f6ef;}
+  button.primary{background:var(--mint);border:0;padding:6px 12px;border-radius:10px;color:#053827;font-weight:700;cursor:pointer;}
+  button.ghost{background:transparent;border:1px solid #d7f0e8;padding:6px 10px;border-radius:8px;color:var(--accent);cursor:pointer;}
+  .meal-list{margin-top:6px;}
+  .meal-item{display:flex;align-items:center;gap:6px;padding:4px;border:1px dashed #e6f6ef;border-radius:8px;margin-top:4px;}
+  .meal-item .name{flex:1;}
+  .summary{margin-top:10px;font-weight:700;}
+  .cat{position:absolute;right:18px;bottom:18px;width:110px;height:110px;background:url('https://cdn-icons-png.flaticon.com/512/616/616408.png') no-repeat center/contain;opacity:0.95;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="logo">CalCute</div>
+  <div>
+    <h1>일주일 식단 계획</h1>
+    <p class="lead">민트 테마 + 귀여운 고양이와 함께하는 일주일 식단 계획 🐱💚</p>
+  </div>
+</header>
+
+<div style="margin-top:12px;">
+  <label>음식 검색 또는 새 음식 입력:</label>
+  <input id="foodSearch" type="text" placeholder="예: 바나나, 김밥">
+  <button class="primary" id="addCustom">추가</button>
+</div>
+
+<div style="margin-top:18px;" id="weekPlan"></div>
+
+<div class="summary" id="weeklySummary">주간 총 칼로리: 0 kcal</div>
+
+<div class="cat"></div>
+</div>
+
+<script>
+// 샘플 음식 DB (100g 기준)
+let FOOD_DB = [
+  {name:'바나나', kcal:89, carb:22.8, protein:1.1, fat:0.3},
+  {name:'사과', kcal:52, carb:14, protein:0.3, fat:0.2},
+  {name:'닭가슴살', kcal:165, carb:0, protein:31, fat:3.6},
+  {name:'밥', kcal:130, carb:28, protein:2.7, fat:0.3},
+  {name:'김밥', kcal:300, carb:45, protein:7, fat:7},
+  {name:'라면', kcal:500, carb:65, protein:10, fat:20}
+];
+
+// 7일치 구조 생성
+let week = [];
+for(let i=0;i<7;i++){
+  week.push({day:`Day ${i+1}`, meals:{아침:[], 점심:[], 저녁:[]}});
+}
+
+// 렌더링
+function renderWeek(){
+  const container = document.getElementById('weekPlan');
+  container.innerHTML='';
+  week.forEach((dayObj, dayIdx)=>{
+    const dayDiv = document.createElement('div');
+    dayDiv.className='day-plan';
+    dayDiv.innerHTML=`<h3>${dayObj.day}</h3>`;
+    ['아침','점심','저녁'].forEach(mealName=>{
+      const mealDiv = document.createElement('div');
+      mealDiv.innerHTML=`<b>${mealName}</b> <div class="meal-list" id="mealList-${dayIdx}-${mealName}"></div>`;
+      dayDiv.appendChild(mealDiv);
+      renderMealList(dayIdx, mealName);
+    });
+    container.appendChild(dayDiv);
+  });
+  updateWeeklySummary();
+}
+
+function renderMealList(dayIdx, mealName){
+  const listDiv = document.getElementById(`mealList-${dayIdx}-${mealName}`);
+  listDiv.innerHTML='';
+  week[dayIdx].meals[mealName].forEach((m,i)=>{
+    const itemDiv = document.createElement('div');
+    itemDiv.className='meal-item';
+    itemDiv.innerHTML=`
+      <span class="name">${m.name}</span>
+      <input type="number" class="qty" data-day="${dayIdx}" data-meal="${mealName}" data-idx="${i}" value="${m.qty}" /> g
+      <span>${Math.round(m.kcal*m.qty/100)} kcal</span>
+      <button class="ghost" data-day="${dayIdx}" data-meal="${mealName}" data-idx="${i}">삭제</button>
+    `;
+    listDiv.appendChild(itemDiv);
+  });
+
+  // 이벤트
+  listDiv.querySelectorAll('.qty').forEach(inp=>{
+    inp.addEventListener('change', e=>{
+      const d = e.target.dataset.day;
+      const meal = e.target.dataset.meal;
+      const idx = e.target.dataset.idx;
+      week[d].meals[meal][idx].qty = Number(e.target.value)||0;
+      renderMealList(d, meal);
+      updateWeeklySummary();
+    });
+  });
+  listDiv.querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+      const d = e.target.dataset.day;
+      const meal = e.target.dataset.meal;
+      const idx = e.target.dataset.idx;
+      week[d].meals[meal].splice(idx,1);
+      renderMealList(d, meal);
+      updateWeeklySummary();
+    });
+  });
+}
+
+function addFoodToMeal(food){
+  // 기본적으로 첫날 아침에 추가
+  week[0].meals['아침'].push({...food, qty:100});
+  renderWeek();
+}
+
+document.getElementById('addCustom').addEventListener('click', ()=>{
+  const q = document.getElementById('foodSearch').value.trim();
+  if(!q) return;
+  // 기존 DB 검색
+  let found = FOOD_DB.find(f=>f.name===q);
+  if(!found){
+    const kcal = Number(prompt(`'${q}' 100g당 kcal 입력:`,'100'))||100;
+    const carb = Number(prompt('탄수화물(g)'))||0;
+    const protein = Number(prompt('단백질(g)'))||0;
+    const fat = Number(prompt('지방(g)'))||0;
+    found = {name:q,kcal,carb,protein,fat};
+    FOOD_DB.push(found);
+  }
+  addFoodToMeal(found);
+  document.getElementById('foodSearch').value='';
+});
+
+function updateWeeklySummary(){
+  let total = 0;
+  week.forEach(day=>{
+    ['아침','점심','저녁'].forEach(meal=>{
+      day.meals[meal].forEach(f=>{
+        total += f.kcal * f.qty/100;
+      });
+    });
+  });
+  document.getElementById('weeklySummary').textContent = `주간 총 칼로리: ${Math.round(total)} kcal`;
+}
+
+// 초기 렌더
+renderWeek();
+</script>
+</body>
+</html>
